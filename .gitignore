@@ -14,3 +14,7 @@ node_modules/
 .claude/
 backups/
 db.json.bak
+votes.sqlite
+votes.sqlite-shm
+votes.sqlite-wal
+*.migrated

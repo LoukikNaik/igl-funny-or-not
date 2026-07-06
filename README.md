@@ -17,7 +17,7 @@ npm start          # → http://localhost:3000
 ## How voting works
 
 - Voter identity = SHA-256 of (IP + a cookie UUID). One face-off vote per pair, one (updatable) score per contestant per voter.
-- All votes live in `db.json` next to the server. Delete it to reset everything.
+- Votes live in SQLite (`votes.sqlite`, WAL mode) via Node's built-in `node:sqlite` (Node 22.5+). Set `DB_PATH` to a persistent volume path in production. The DB is snapshotted into `backups/` on every boot, and any legacy `db.json` is migrated automatically on first run.
 - **Audience Winners**: a contestant appears there when the rounded audience average equals `showScore`, the score they actually got on the show.
 
 ## Maintaining the data (`data.js`)
