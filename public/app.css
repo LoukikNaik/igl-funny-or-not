@@ -284,3 +284,19 @@ tr.rowClick:hover .mini::after { opacity: 1; transform: translateX(0); }
   .modal .mPhoto { min-height: 300px; }
   tr.rowClick .mini::after { display: none; }
 }
+
+/* ---------- gated leaderboard link ---------- */
+nav .links a.lockedLink {
+  opacity: .45; cursor: not-allowed; position: relative;
+}
+nav .links a.lockedLink:hover { background: transparent; color: var(--muted); }
+.lockNotice {
+  max-width: 460px; margin: 40px auto; text-align: center;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 34px 28px; box-shadow: var(--shadow-soft);
+}
+.lockNotice .lockIcon { font-size: 40px; margin-bottom: 10px; }
+.lockNotice h2 { font-weight: 900; margin-bottom: 8px; }
+.lockNotice p { color: var(--muted); font-size: 14px; line-height: 1.6; margin-bottom: 18px; }
+.lockBar { height: 10px; background: var(--surface2); border-radius: 999px; overflow: hidden; margin-bottom: 18px; }
+.lockBar > div { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s; }

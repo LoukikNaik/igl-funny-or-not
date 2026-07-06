@@ -155,3 +155,27 @@ function showPersonModal(p) {
   document.addEventListener('keydown', onKey);
   document.body.appendChild(ov);
 }
+
+// ---- leaderboard gate: unlocks after 10 face-off votes ----
+const LEADERBOARD_UNLOCK = 10;
+async function myVotes() {
+  try { return (await API.get('/api/me')).myVotes || 0; } catch { return 0; }
+}
+function paintLeaderboardLink(votes) {
+  document.querySelectorAll('nav .links a[href="/leaderboard"]').forEach(link => {
+    if (votes >= LEADERBOARD_UNLOCK) {
+      link.classList.remove('lockedLink');
+      link.textContent = '🏆 Leaderboard';
+      link.title = '';
+      link.onclick = null;
+    } else {
+      link.classList.add('lockedLink');
+      link.textContent = `🔒 Leaderboard ${votes}/${LEADERBOARD_UNLOCK}`;
+      link.title = `Decide ${LEADERBOARD_UNLOCK - votes} more face-offs to unlock the leaderboard`;
+      link.onclick = e => e.preventDefault();
+    }
+  });
+}
+document.addEventListener('DOMContentLoaded', async () => {
+  paintLeaderboardLink(await myVotes());
+});

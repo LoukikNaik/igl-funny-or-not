@@ -99,6 +99,7 @@ const q = {
   totalFaceoffs: db.prepare('SELECT COUNT(*) AS n FROM faceoffs'),
   totalRatings: db.prepare('SELECT COUNT(*) AS n FROM ratings'),
   voterPairs: db.prepare('SELECT pair_key FROM faceoffs WHERE voter_id = ?'),
+  voterVotes: db.prepare('SELECT COUNT(*) AS n FROM faceoffs WHERE voter_id = ?'),
 };
 
 // ---------- voter identity: IP + cookie ----------
@@ -178,6 +179,10 @@ function api(req, res, url, body) {
     res.end(JSON.stringify(obj));
   };
 
+  if (req.method === 'GET' && url.pathname === '/api/me') {
+    return send(200, { voterId, myVotes: q.voterVotes.get(voterId).n });
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/people') {
     return send(200, { voterId, people: PEOPLE.map(p => personOut(p, voterId)) });
   }
@@ -187,18 +192,25 @@ function api(req, res, url, body) {
     const cands = PEOPLE.filter(p => inPool(p, pool));
     if (cands.length < 2) return send(400, { error: 'pool too small' });
     const seen = new Set(q.voterPairs.all(voterId).map(r => r.pair_key));
-    // contestants never face panelists — pairs always share a type;
-    // try to find a pair this voter hasn't judged yet
-    let a, b;
-    for (let i = 0; i < 60; i++) {
-      a = cands[Math.floor(Math.random() * cands.length)];
-      const sameType = cands.filter(p => p.type === a.type && p.id !== a.id);
-      if (!sameType.length) continue;
-      b = sameType[Math.floor(Math.random() * sameType.length)];
-      if (!seen.has(pairKey(voterId, a.id, b.id))) break;
+    const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+    // fairness: people with the fewest total face-off votes go on stage first
+    // (random tiebreak), against a random same-type opponent this voter hasn't judged yet
+    const byExposure = shuffle([...cands])
+      .map(p => { const r = playerRow(p.id); return { p, votes: r.wins + r.losses }; })
+      .sort((x, y) => x.votes - y.votes);
+    let a = null, b = null;
+    for (const { p } of byExposure) {
+      const opponents = shuffle(cands.filter(o => o.type === p.type && o.id !== p.id));
+      const fresh = opponents.find(o => !seen.has(pairKey(voterId, p.id, o.id)));
+      if (fresh) { a = p; b = fresh; break; }
     }
-    if (!b || a.id === b.id) b = cands.find(p => p.type === a.type && p.id !== a.id);
-    if (!b) return send(400, { error: 'pool too small' });
+    if (!a) {
+      // voter has exhausted every pair: serve the least-voted person vs a random opponent
+      a = byExposure[0].p;
+      const opponents = cands.filter(o => o.type === a.type && o.id !== a.id);
+      b = opponents[Math.floor(Math.random() * opponents.length)];
+    }
+    if (!a || !b) return send(400, { error: 'pool too small' });
     return send(200, { a: personOut(a, voterId), b: personOut(b, voterId) });
   }
 
@@ -211,7 +223,7 @@ function api(req, res, url, body) {
     const key = pairKey(voterId, winnerId, loserId);
     if (q.faceoffExists.get(key)) return send(200, { ok: true, duplicate: true });
     const deltas = applyFaceoff(winnerId, loserId, voterId, key);
-    return send(200, { ok: true, ...deltas });
+    return send(200, { ok: true, ...deltas, myVotes: q.voterVotes.get(voterId).n });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/score') {

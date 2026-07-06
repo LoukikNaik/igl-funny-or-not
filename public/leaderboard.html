@@ -120,6 +120,18 @@ function statChips() {
 }
 
 async function load() {
+  const votes = await myVotes();
+  if (votes < LEADERBOARD_UNLOCK) {
+    document.querySelector('main').innerHTML = `
+      <div class="lockNotice">
+        <div class="lockIcon">🔒</div>
+        <h2>Leaderboard locked</h2>
+        <p>Rankings unlock after you decide ${LEADERBOARD_UNLOCK} face-offs, so every visitor contributes before peeking. You're at <b>${votes}/${LEADERBOARD_UNLOCK}</b>.</p>
+        <div class="lockBar"><div style="width:${votes * 100 / LEADERBOARD_UNLOCK}%"></div></div>
+        <button class="btn primary" onclick="location.href='/'">Go vote 🔥</button>
+      </div>`;
+    return;
+  }
   data = await API.get('/api/leaderboard');
   statChips();
   if (!SHOW_CONTESTANTS) {

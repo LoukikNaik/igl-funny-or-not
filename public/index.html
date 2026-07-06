@@ -89,6 +89,7 @@ async function vote(winner, loser, winCard, loseCard) {
     loseCard.appendChild(down);
   }
   bumpSession();
+  if (res && res.myVotes !== undefined) paintLeaderboardLink(res.myVotes);
   setTimeout(loadMatchup, 800);
 }
 
