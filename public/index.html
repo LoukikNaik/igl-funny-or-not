@@ -35,7 +35,7 @@
 </nav>
 <main>
   <h1>Who's <em>funnier</em>?</h1>
-  <p class="sub">Comedy is subjective. We're settling it anyway. Two India's Got Latent panelists walk in, you pick the funnier one — swipe, tap, or ← / →. Democracy, but pettier.</p>
+  <p class="sub">Comedy is subjective. We're settling it anyway. Two India's Got Latent panelists, one question: who's funnier? Swipe, tap, or use ← / →.</p>
 
   <div class="chips" id="pools">
     <button class="chip on" data-pool="panel">All panelists</button>
@@ -97,7 +97,7 @@ function renderSession() {
   const isTouch = matchMedia('(hover: none)').matches;
   const hint = isTouch ? 'Swipe the funnier one to glory.' : '\u2190 / \u2192 or click. You are the panel now.';
   document.getElementById('sessionNote').textContent =
-    n ? `${n} verdict${n === 1 ? '' : 's'} delivered. Somewhere an Elo rating just flinched.` : hint;
+    n ? `${n} vote${n === 1 ? '' : 's'} in. Every one nudges the rankings.` : hint;
 }
 
 // Tinder-style: the whole arena flings off in the swipe direction, next matchup slides in.
