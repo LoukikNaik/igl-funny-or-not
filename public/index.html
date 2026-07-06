@@ -60,23 +60,31 @@
 let pool = 'panel';
 let current = null;
 let voting = false;
+const arena = document.getElementById('arena');
+const wait = ms => new Promise(r => setTimeout(r, ms));
 
-async function loadMatchup() {
-  voting = false;
+async function fetchMatchup() {
   const m = await API.get('/api/matchup?pool=' + pool);
-  if (m.error) return;
-  current = m;
-  render();
+  return m && !m.error ? m : null;
 }
 
 function render() {
-  const a = document.getElementById('slotA');
-  const b = document.getElementById('slotB');
+  const a = document.getElementById('slotA'), b = document.getElementById('slotB');
   a.innerHTML = ''; b.innerHTML = '';
   a.appendChild(personCard(current.a, { clickable: true }));
   b.appendChild(personCard(current.b, { clickable: true }));
-  a.firstChild.onclick = () => vote(current.a, current.b, a.firstChild, b.firstChild);
-  b.firstChild.onclick = () => vote(current.b, current.a, b.firstChild, a.firstChild);
+  a.firstChild.onclick = () => commitVote(-1);   // left card wins
+  b.firstChild.onclick = () => commitVote(1);    // right card wins
+}
+
+async function loadMatchup() {
+  const m = await fetchMatchup();
+  if (!m) return;
+  current = m; render();
+  arena.style.transition = 'none';
+  arena.style.transform = 'translateX(0) rotate(0)';
+  arena.style.opacity = '1';
+  voting = false;
 }
 
 function bumpSession() {
@@ -87,31 +95,77 @@ function bumpSession() {
 function renderSession() {
   const n = parseInt(localStorage.getItem('igl_session_votes') || '0', 10);
   const isTouch = matchMedia('(hover: none)').matches;
-  const hint = isTouch ? 'Swipe or tap a card to vote.' : 'Use ← / → to vote from the keyboard.';
+  const hint = isTouch ? 'Swipe or tap a card to vote.' : 'Use \u2190 / \u2192 (or click) to vote.';
   document.getElementById('sessionNote').textContent =
     n ? `You've decided ${n} matchup${n === 1 ? '' : 's'}, every one moves the leaderboard.` : hint;
 }
 
-async function vote(winner, loser, winCard, loseCard) {
-  if (voting) return;
+// Tinder-style: the whole arena flings off in the swipe direction, next matchup slides in.
+async function commitVote(dir) {              // dir: -1 = left wins, +1 = right wins
+  if (voting || !current) return;
   voting = true;
-  winCard.classList.add('won');
-  loseCard.classList.add('lost');
-  const res = await API.post('/api/faceoff', { winnerId: winner.id, loserId: loser.id });
-  if (res && res.winnerDelta !== undefined) {
-    const up = document.createElement('div');
-    up.className = 'eloDelta';
-    up.textContent = `+${res.winnerDelta} Elo`;
-    winCard.appendChild(up);
-    const down = document.createElement('div');
-    down.className = 'eloDelta neg';
-    down.textContent = `${res.loserDelta} Elo`;
-    loseCard.appendChild(down);
-  }
-  bumpSession();
-  if (res && res.myVotes !== undefined) paintLeaderboardLink(res.myVotes);
-  setTimeout(loadMatchup, 800);
+  const winner = dir < 0 ? current.a : current.b;
+  const loser  = dir < 0 ? current.b : current.a;
+
+  API.post('/api/faceoff', { winnerId: winner.id, loserId: loser.id }).then(res => {
+    bumpSession();
+    if (res && res.myVotes !== undefined) paintLeaderboardLink(res.myVotes);
+  });
+
+  arena.style.transition = 'transform .34s cubic-bezier(.55,.06,.68,.19), opacity .34s ease-in';
+  arena.style.transform = `translateX(${dir * 130}vw) rotate(${dir * 15}deg)`;
+  arena.style.opacity = '0';
+
+  const [, next] = await Promise.all([wait(340), fetchMatchup()]);
+  if (next) current = next;
+
+  arena.style.transition = 'none';
+  arena.style.transform = `translateX(${-dir * 42}vw) rotate(${-dir * 6}deg)`;
+  arena.style.opacity = '0';
+  render();
+  await wait(20);
+  arena.style.transition = 'transform .32s cubic-bezier(.2,.7,.3,1), opacity .3s ease-out';
+  arena.style.transform = 'translateX(0) rotate(0)';
+  arena.style.opacity = '1';
+  await wait(320);
+  voting = false;
 }
+
+// ---- drag: the arena follows the finger, release past threshold to fling ----
+(function setupSwipe() {
+  const THRESH = 60;
+  let startX = 0, startY = 0, dx = 0, active = false, horiz = false;
+  const cardA = () => document.getElementById('slotA').firstChild;
+  const cardB = () => document.getElementById('slotB').firstChild;
+  const clearPick = () => [cardA(), cardB()].forEach(c => c && c.classList.remove('picking'));
+
+  arena.addEventListener('touchstart', e => {
+    if (voting || !current) return;
+    const t = e.touches[0]; startX = t.clientX; startY = t.clientY; dx = 0; active = true; horiz = false;
+  }, { passive: true });
+
+  arena.addEventListener('touchmove', e => {
+    if (!active) return;
+    const t = e.touches[0]; dx = t.clientX - startX; const dy = t.clientY - startY;
+    if (!horiz && Math.abs(dx) < Math.abs(dy)) { active = false; return; }
+    horiz = true; e.preventDefault();
+    arena.style.transition = 'none';
+    arena.style.transform = `translateX(${dx}px) rotate(${dx * 0.04}deg)`;
+    const a = cardA(), b = cardB();
+    if (a) a.classList.toggle('picking', dx < -14);
+    if (b) b.classList.toggle('picking', dx > 14);
+  }, { passive: false });
+
+  const release = () => {
+    if (!active) return; active = false; clearPick();
+    if (dx <= -THRESH) return commitVote(-1);
+    if (dx >= THRESH) return commitVote(1);
+    arena.style.transition = 'transform .25s ease';
+    arena.style.transform = 'translateX(0) rotate(0)';
+  };
+  arena.addEventListener('touchend', release);
+  arena.addEventListener('touchcancel', release);
+})();
 
 document.getElementById('pools').addEventListener('click', e => {
   const chip = e.target.closest('.chip');
@@ -123,50 +177,10 @@ document.getElementById('pools').addEventListener('click', e => {
 });
 document.getElementById('skip').onclick = loadMatchup;
 document.addEventListener('keydown', e => {
-  if (!current || voting) return;
-  if (e.key === 'ArrowLeft') document.getElementById('slotA').firstChild.click();
-  if (e.key === 'ArrowRight') document.getElementById('slotB').firstChild.click();
+  if (voting || !current) return;
+  if (e.key === 'ArrowLeft') commitVote(-1);
+  if (e.key === 'ArrowRight') commitVote(1);
 });
-
-// ---- swipe to vote (phones): drag left = left wins, drag right = right wins ----
-(function setupSwipe() {
-  const arena = document.getElementById('arena');
-  const THRESH = 55;
-  let startX = 0, startY = 0, dx = 0, active = false, horiz = false;
-  const cardA = () => document.getElementById('slotA').firstChild;
-  const cardB = () => document.getElementById('slotB').firstChild;
-  const clearPick = () => { [cardA(), cardB()].forEach(c => c && c.classList.remove('picking')); };
-
-  arena.addEventListener('touchstart', e => {
-    if (voting || !current) return;
-    const t = e.touches[0]; startX = t.clientX; startY = t.clientY; dx = 0; active = true; horiz = false;
-    arena.style.transition = 'none';
-  }, { passive: true });
-
-  arena.addEventListener('touchmove', e => {
-    if (!active) return;
-    const t = e.touches[0]; dx = t.clientX - startX; const dy = t.clientY - startY;
-    if (!horiz && Math.abs(dx) < Math.abs(dy)) { active = false; return; } // it's a vertical scroll
-    horiz = true;
-    e.preventDefault();
-    arena.style.transform = 'translateX(' + (dx * 0.35) + 'px)';
-    const a = cardA(), b = cardB();
-    if (a) a.classList.toggle('picking', dx < -14);
-    if (b) b.classList.toggle('picking', dx > 14);
-  }, { passive: false });
-
-  const end = () => {
-    if (!active) { clearPick(); arena.style.transform = ''; return; }
-    active = false;
-    arena.style.transition = 'transform .25s ease';
-    arena.style.transform = '';
-    clearPick();
-    if (dx <= -THRESH && cardA()) cardA().click();
-    else if (dx >= THRESH && cardB()) cardB().click();
-  };
-  arena.addEventListener('touchend', end);
-  arena.addEventListener('touchcancel', end);
-})();
 
 renderSession();
 loadMatchup();
