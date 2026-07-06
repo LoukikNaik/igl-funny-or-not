@@ -1,4 +1,4 @@
-# Deploy: frontend on GitHub Pages, backend local via ngrok
+# Deploy: frontend on GitHub Pages (igl.loukik.dev), backend local via ngrok
 
 The frontend is static (`public/`) and goes to GitHub Pages. The backend
 (`server.js` + SQLite) runs on your machine and is exposed to the internet with
@@ -10,9 +10,16 @@ ngrok. The Pages frontend calls the ngrok URL for all `/api/*` requests.
    (Publishing Pages from a *private* repo needs a paid plan — Pro/Team. On the
    free tier, make the repo public or host the frontend elsewhere.)
 
+2. **Custom domain `igl.loukik.dev`** (already wired via `public/CNAME`):
+   - At your DNS provider for `loukik.dev`, add a **CNAME** record:
+     `igl`  →  `loukiknaik.github.io`   (proxy/orange-cloud OFF if using Cloudflare)
+   - Repo Settings → Pages → Custom domain → enter `igl.loukik.dev`, Save.
+   - Tick **Enforce HTTPS** once the cert provisions (a few minutes).
+   - DNS check: `dig +short igl.loukik.dev CNAME` should show `loukiknaik.github.io`.
+
 2. **Backend env vars** (so cross-origin cookies + CORS work):
    ```bash
-   export ALLOWED_ORIGIN="https://<your-username>.github.io"   # your Pages origin, no trailing slash, no repo path
+   export ALLOWED_ORIGIN="https://igl.loukik.dev"   # your Pages origin, no trailing slash, no path
    export STATS_KEY="pick-a-secret"                            # protects /stats and /api/stats
    ```
 
@@ -20,7 +27,7 @@ ngrok. The Pages frontend calls the ngrok URL for all `/api/*` requests.
 
 1. **Start the backend:**
    ```bash
-   ALLOWED_ORIGIN="https://<username>.github.io" STATS_KEY="..." npm start
+   ALLOWED_ORIGIN="https://igl.loukik.dev" STATS_KEY="..." npm start
    ```
 2. **Expose it with ngrok:**
    ```bash
@@ -33,7 +40,7 @@ ngrok. The Pages frontend calls the ngrok URL for all `/api/*` requests.
    ```
    Commit + push. The Actions workflow redeploys Pages in ~1 min.
 
-Your live site: `https://<username>.github.io/<repo>/`
+Your live site: `https://igl.loukik.dev`
 
 ## The ngrok free-tier catch
 
@@ -44,8 +51,10 @@ and push each time. Fixes:
 
 ## Notes
 
-- `ALLOWED_ORIGIN` is the origin only (`https://user.github.io`) — never include
-  the `/repo` path or a trailing slash, or the CORS check fails.
+- `ALLOWED_ORIGIN` is the origin only (`https://igl.loukik.dev`) — never include
+  a path or a trailing slash, or the CORS check fails.
+- Optional: put the backend behind `api.loukik.dev` with a reserved ngrok domain
+  (CNAME `api` → your ngrok domain) so the API URL is stable and on-brand.
 - Photos are committed to `public/photos/` and served by Pages directly (relative
   paths), so they don't go through ngrok.
 - The backend still works fully standalone with no env vars: `npm start` serves
