@@ -50,6 +50,13 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_faceoffs_voter ON faceoffs(voter_id);
   CREATE INDEX IF NOT EXISTS idx_ratings_person ON ratings(person_id);
+  CREATE TABLE IF NOT EXISTS events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    voter_id   TEXT NOT NULL,
+    event      TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_events_evt ON events(event);
 `);
 
 // one-time migration from the old db.json, if it exists and sqlite is empty
@@ -100,7 +107,18 @@ const q = {
   totalRatings: db.prepare('SELECT COUNT(*) AS n FROM ratings'),
   voterPairs: db.prepare('SELECT pair_key FROM faceoffs WHERE voter_id = ?'),
   voterVotes: db.prepare('SELECT COUNT(*) AS n FROM faceoffs WHERE voter_id = ?'),
+  logEvent: db.prepare('INSERT INTO events(voter_id, event) VALUES(?,?)'),
+  firstSeen: db.prepare('SELECT 1 AS x FROM events WHERE voter_id = ? LIMIT 1'),
+  distinctBy: db.prepare('SELECT COUNT(DISTINCT voter_id) AS n FROM events WHERE event = ?'),
+  eventCount: db.prepare('SELECT COUNT(*) AS n FROM events WHERE event = ?'),
+  distinctVisitors: db.prepare('SELECT COUNT(DISTINCT voter_id) AS n FROM events'),
+  distinctFaceoffVoters: db.prepare('SELECT COUNT(DISTINCT voter_id) AS n FROM faceoffs'),
+  distinctScoreVoters: db.prepare('SELECT COUNT(DISTINCT voter_id) AS n FROM ratings'),
+  eventsByDay: db.prepare(`SELECT substr(created_at,1,10) AS day, COUNT(DISTINCT voter_id) AS visitors
+    FROM events GROUP BY day ORDER BY day DESC LIMIT 30`),
 };
+
+const VALID_EVENTS = new Set(['visit', 'leaderboard_view', 'leaderboard_interact', 'judge_view']);
 
 // ---------- voter identity: IP + cookie ----------
 function getIp(req) {
@@ -183,6 +201,30 @@ function api(req, res, url, body) {
     return send(200, { voterId, myVotes: q.voterVotes.get(voterId).n });
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/event') {
+    const evt = body && body.event;
+    if (VALID_EVENTS.has(evt)) q.logEvent.run(voterId, evt);
+    return send(200, { ok: true });
+  }
+
+  // Admin analytics. Protect with STATS_KEY env in production: /api/stats?key=...
+  if (req.method === 'GET' && url.pathname === '/api/stats') {
+    const need = process.env.STATS_KEY;
+    if (need && url.searchParams.get('key') !== need) return send(403, { error: 'forbidden' });
+    return send(200, {
+      uniqueVisitors: q.distinctVisitors.get().n,
+      pageviews: q.eventCount.get('visit').n,
+      faceoffVoters: q.distinctFaceoffVoters.get().n,
+      faceoffVotes: q.totalFaceoffs.get().n,
+      scoreVoters: q.distinctScoreVoters.get().n,
+      scoreVotes: q.totalRatings.get().n,
+      leaderboardViewers: q.distinctBy.get('leaderboard_view').n,
+      leaderboardInteractors: q.distinctBy.get('leaderboard_interact').n,
+      judgeViewers: q.distinctBy.get('judge_view').n,
+      visitorsByDay: q.eventsByDay.all(),
+    });
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/people') {
     return send(200, { voterId, people: PEOPLE.map(p => personOut(p, voterId)) });
   }
@@ -260,7 +302,7 @@ function api(req, res, url, body) {
 const MIME = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
-const ROUTES = { '/': 'index.html', '/judge': 'judge.html', '/leaderboard': 'leaderboard.html' };
+const ROUTES = { '/': 'index.html', '/judge': 'judge.html', '/leaderboard': 'leaderboard.html', '/stats': 'stats.html' };
 
 function serveStatic(req, res, url) {
   let rel = ROUTES[url.pathname] || url.pathname.slice(1);

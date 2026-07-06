@@ -287,9 +287,26 @@ tr.rowClick:hover .mini::after { opacity: 1; transform: translateX(0); }
 
 /* ---------- gated leaderboard link ---------- */
 nav .links a.lockedLink {
-  opacity: .45; cursor: not-allowed; position: relative;
+  opacity: .55; cursor: not-allowed; position: relative;
 }
 nav .links a.lockedLink:hover { background: transparent; color: var(--muted); }
+nav .links a.lockedLink::after {
+  content: attr(data-tip);
+  position: absolute; top: calc(100% + 10px); right: 0;
+  background: var(--surface2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 9px 13px; font-size: 12px; font-weight: 600; line-height: 1.45;
+  width: 232px; white-space: normal; text-align: left;
+  box-shadow: var(--shadow); opacity: 0; transform: translateY(-4px);
+  pointer-events: none; transition: opacity .15s, transform .15s; z-index: 30;
+}
+nav .links a.lockedLink::before {
+  content: ''; position: absolute; top: calc(100% + 4px); right: 26px;
+  border: 6px solid transparent; border-bottom-color: var(--border);
+  opacity: 0; transition: opacity .15s; pointer-events: none; z-index: 30;
+}
+nav .links a.lockedLink:hover::after,
+nav .links a.lockedLink:hover::before { opacity: 1; transform: translateY(0); }
 .lockNotice {
   max-width: 460px; margin: 40px auto; text-align: center;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);

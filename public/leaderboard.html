@@ -32,8 +32,8 @@
     <div class="note">From face-off votes. Win against a higher-rated rival, climb faster. Click anyone to read their episode story.</div>
     <div class="chips" id="hotFilter">
       <button class="chip on" data-f="all">Everyone</button>
-      <button class="chip" data-f="panel">Panel</button>
-      <button class="chip" data-f="contestant">Contestants</button>
+      <button class="chip" data-f="s1">Season 1</button>
+      <button class="chip" data-f="s2">Season 2</button>
     </div>
     <input class="searchBox" id="search" type="search" placeholder="Search a panelist… (name or episode, e.g. 'E11')">
     <div id="hotTable"></div>
@@ -54,8 +54,11 @@ let currentFilter = 'all';
 function hotRows(filter) {
   currentFilter = filter;
   const q = (document.getElementById('search').value || '').trim().toLowerCase();
-  let rows = data.hot.filter(p => filter === 'all' || p.type === filter);
+  let rows = [...data.hot];
   if (!SHOW_CONTESTANTS) rows = rows.filter(p => p.type === 'panel');
+  if (filter === 's1') rows = rows.filter(p => p.panels.some(x => x.startsWith('S1')));
+  else if (filter === 's2') rows = rows.filter(p => p.panels.some(x => x.startsWith('S2')));
+  else if (filter === 'panel' || filter === 'contestant') rows = rows.filter(p => p.type === filter);
   if (q) rows = rows.filter(p =>
     p.name.toLowerCase().includes(q) ||
     p.panels.some(x => x.toLowerCase().includes(q)) ||
@@ -69,7 +72,7 @@ function hotRows(filter) {
       <td>${p.panels.map(x => `<span class="badge dim">${x}</span>`).join(' ')}</td>
       <td><b>${p.elo}</b></td><td style="color:var(--muted)">${p.wins}–${p.losses}</td>`;
     tr.children[1].appendChild(miniPerson(p));
-    tr.onclick = () => showPersonModal(p);
+    tr.onclick = () => { markInteract(); showPersonModal(p); };
     t.appendChild(tr);
   });
   const holder = document.getElementById('hotTable');
@@ -89,7 +92,7 @@ function judgeRows() {
       <td style="color:var(--muted)">${p.scoreCount}</td>
       <td>${p.showScore !== null ? p.showScore + '/10' : '<span style="color:var(--muted)">unknown</span>'}</td>`;
     tr.children[1].appendChild(miniPerson(p));
-    tr.onclick = () => showPersonModal(p);
+    tr.onclick = () => { markInteract(); showPersonModal(p); };
     t.appendChild(tr);
   });
   const holder = document.getElementById('judgeTable');
@@ -120,6 +123,7 @@ function statChips() {
 }
 
 async function load() {
+  track('leaderboard_view');
   const votes = await myVotes();
   if (votes < LEADERBOARD_UNLOCK) {
     document.querySelector('main').innerHTML = `
@@ -144,12 +148,15 @@ async function load() {
   audienceWinners();
 }
 
-document.getElementById('search').addEventListener('input', () => hotRows(currentFilter));
+let interacted = false;
+function markInteract() { if (!interacted) { interacted = true; track('leaderboard_interact'); } }
+document.getElementById('search').addEventListener('input', () => { markInteract(); hotRows(currentFilter); });
 document.getElementById('hotFilter').addEventListener('click', e => {
   const chip = e.target.closest('.chip');
   if (!chip) return;
   document.querySelectorAll('#hotFilter .chip').forEach(c => c.classList.remove('on'));
   chip.classList.add('on');
+  markInteract();
   hotRows(chip.dataset.f);
 });
 

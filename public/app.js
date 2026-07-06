@@ -166,12 +166,14 @@ function paintLeaderboardLink(votes) {
     if (votes >= LEADERBOARD_UNLOCK) {
       link.classList.remove('lockedLink');
       link.textContent = '🏆 Leaderboard';
-      link.title = '';
+      link.removeAttribute('data-tip');
       link.onclick = null;
     } else {
       link.classList.add('lockedLink');
       link.textContent = `🔒 Leaderboard ${votes}/${LEADERBOARD_UNLOCK}`;
-      link.title = `Decide ${LEADERBOARD_UNLOCK - votes} more face-offs to unlock the leaderboard`;
+      const left = LEADERBOARD_UNLOCK - votes;
+      link.setAttribute('data-tip',
+        `The leaderboard unlocks after you decide ${LEADERBOARD_UNLOCK} face-offs, so every visitor votes before peeking. ${left} to go!`);
       link.onclick = e => e.preventDefault();
     }
   });
@@ -179,3 +181,13 @@ function paintLeaderboardLink(votes) {
 document.addEventListener('DOMContentLoaded', async () => {
   paintLeaderboardLink(await myVotes());
 });
+
+// ---- analytics beacons (privacy-light: only the anonymous voter id + event name) ----
+function track(event) {
+  try {
+    const body = JSON.stringify({ event });
+    if (navigator.sendBeacon) navigator.sendBeacon('/api/event', new Blob([body], { type: 'application/json' }));
+    else fetch('/api/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true });
+  } catch {}
+}
+document.addEventListener('DOMContentLoaded', () => track('visit'));

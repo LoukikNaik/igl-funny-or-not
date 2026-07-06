@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analytics — India's Got Latent</title>
+<script>document.documentElement.setAttribute('data-theme', localStorage.getItem('igl_theme') || 'black');</script>
+<link rel="stylesheet" href="/app.css">
+<style>
+  .bigStats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 32px; }
+  .bigStat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow-soft); }
+  .bigStat b { font-size: 34px; font-weight: 900; color: var(--rank-ink); display: block; line-height: 1.1; }
+  .bigStat span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .bigStat small { display: block; color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .funnelBar { height: 26px; background: var(--surface2); border-radius: 8px; overflow: hidden; margin: 4px 0 2px; }
+  .funnelBar > div { height: 100%; background: var(--accent); border-radius: 8px; display: flex; align-items: center; padding: 0 10px; font-weight: 800; color: var(--accent-ink); font-size: 12px; min-width: 40px; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">INDIA'S GOT <em>LATENT</em> · ANALYTICS</div>
+  <div class="links">
+    <a href="/">🔥 Face-Off</a>
+    <a href="/leaderboard">🏆 Leaderboard</a>
+    <button class="themeToggle" title="Switch theme" aria-label="Switch theme">☀️</button>
+  </div>
+</nav>
+<main>
+  <h1><em>Analytics</em></h1>
+  <p class="sub">Anonymous, first-party engagement funnel. All counts are distinct voters (IP + cookie), no third-party trackers.</p>
+  <div id="dash"><div class="empty">Loading…</div></div>
+</main>
+<script src="/app.js"></script>
+<script>
+async function load() {
+  const key = new URLSearchParams(location.search).get('key');
+  const r = await fetch('/api/stats' + (key ? '?key=' + encodeURIComponent(key) : ''));
+  if (r.status === 403) {
+    document.getElementById('dash').innerHTML = '<div class="empty">🔒 This dashboard is protected. Append <code>?key=YOUR_STATS_KEY</code> to the URL.</div>';
+    return;
+  }
+  const s = await r.json();
+  const pct = (n, d) => d ? Math.round(n * 100 / d) : 0;
+  document.getElementById('dash').innerHTML = `
+    <div class="bigStats">
+      <div class="bigStat"><b>${s.uniqueVisitors}</b><span>Unique visitors</span><small>${s.pageviews} total pageviews</small></div>
+      <div class="bigStat"><b>${s.faceoffVoters}</b><span>Face-off voters</span><small>${s.faceoffVotes} votes cast</small></div>
+      <div class="bigStat"><b>${s.leaderboardViewers}</b><span>Leaderboard viewers</span><small>${s.leaderboardInteractors} interacted (searched/filtered/opened a profile)</small></div>
+      <div class="bigStat"><b>${s.scoreVoters}</b><span>Judge-mode scorers</span><small>${s.scoreVotes} scores given</small></div>
+    </div>
+    <div class="section">
+      <h2>Engagement funnel</h2>
+      <div class="note">What share of visitors take each action.</div>
+      ${funnel('Visited the site', s.uniqueVisitors, s.uniqueVisitors)}
+      ${funnel('Voted in a face-off', s.faceoffVoters, s.uniqueVisitors)}
+      ${funnel('Viewed the leaderboard', s.leaderboardViewers, s.uniqueVisitors)}
+      ${funnel('Interacted with leaderboard', s.leaderboardInteractors, s.uniqueVisitors)}
+    </div>
+    <div class="section">
+      <h2>Unique visitors by day</h2>
+      <table><tr><th>Day</th><th>Visitors</th></tr>
+        ${(s.visitorsByDay || []).map(d => `<tr><td>${d.day}</td><td><b>${d.visitors}</b></td></tr>`).join('') || '<tr><td colspan="2" style="color:var(--muted)">no data yet</td></tr>'}
+      </table>
+    </div>`;
+  function funnel(label, n, total) {
+    const p = pct(n, total);
+    return `<div style="margin-bottom:12px"><div style="font-size:13px;font-weight:700;margin-bottom:4px">${label} — ${n} (${p}%)</div>
+      <div class="funnelBar"><div style="width:${Math.max(p,6)}%">${p}%</div></div></div>`;
+  }
+}
+load();
+</script>
+</body>
+</html>
