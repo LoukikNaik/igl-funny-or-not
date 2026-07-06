@@ -32,6 +32,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Inject backend API URL into config.js
+        env:
+          API_BASE: ${{ vars.API_BASE }}
+        run: |
+          printf "// Generated at deploy time from the API_BASE repo variable.\nwindow.API_BASE = '%s';\n" "$API_BASE" > public/config.js
+          echo "config.js ->"; cat public/config.js
       - name: Upload public/ as the Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
