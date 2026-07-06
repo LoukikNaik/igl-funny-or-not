@@ -45,7 +45,7 @@
   </div>
 
   <div class="section">
-    <h2>🔥 Funny or Not, Elo ranking</h2>
+    <h2>🔥 The pecking order</h2>
     <div class="note">Chess-grade Elo, applied to comedy. Beat someone ranked above you and you rocket up; lose to an underdog and, well, that one lingers. Tap anyone for their episode story.</div>
     <div class="chips" id="hotFilter">
       <button class="chip on" data-f="all">Everyone</button>
@@ -134,10 +134,12 @@ function audienceWinners() {
 function statChips() {
   const t = data.totals || {};
   const shown = SHOW_CONTESTANTS ? t.people : data.hot.filter(p => p.type === 'panel').length;
-  document.getElementById('statChips').innerHTML = `
-    <div class="statChip"><b>${shown}</b><span>People ranked</span></div>
-    <div class="statChip"><b>${t.faceoffVotes ?? 0}</b><span>Face-off votes</span></div>
-    <div class="statChip"><b>${t.scoreVotes ?? 0}</b><span>Judge scores</span></div>`;
+  const chips = [
+    `<div class="statChip"><b>${shown}</b><span>Panelists in the ring</span></div>`,
+    `<div class="statChip"><b>${t.faceoffVotes ?? 0}</b><span>Verdicts cast</span></div>`,
+  ];
+  if (SHOW_CONTESTANTS) chips.push(`<div class="statChip"><b>${t.scoreVotes ?? 0}</b><span>Talent scores</span></div>`);
+  document.getElementById('statChips').innerHTML = chips.join('');
 }
 
 async function load() {
