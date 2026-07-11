@@ -10,8 +10,11 @@ routes = [
 
 [vars]
 ALLOWED_ORIGIN = "https://igl.loukik.dev"
-# STATS_KEY is set as a secret (wrangler secret put STATS_KEY)
+# STATS_KEY, TURNSTILE_SECRET, SESSION_SECRET are set as secrets (wrangler secret put ...)
 BLOCKED_IPS = "101.0.63.11"
+# Require a valid proof-of-human session on votes. Kept "false" during rollout,
+# flip to "true" once the frontend is confirmed shipping x-igl-session.
+ENFORCE_SESSION = "false"
 
 # D1 database (id filled in after `wrangler d1 create igl-votes`)
 [[d1_databases]]

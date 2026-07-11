@@ -32,11 +32,81 @@ function voterToken() {
 const API_HEADERS = { 'ngrok-skip-browser-warning': 'true', 'x-igl-voter': voterToken() };
 const API = {
   get: (u) => fetch(API_BASE + u, { credentials: 'include', headers: API_HEADERS }).then(r => r.json()),
-  post: (u, body) => fetch(API_BASE + u, {
+  post: (u, body, extra = {}) => fetch(API_BASE + u, {
     method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...API_HEADERS }, body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', ...API_HEADERS, ...extra }, body: JSON.stringify(body),
   }).then(r => r.json()),
 };
+
+// ---- Turnstile proof-of-human -> signed session (attached to votes) ----
+// Solve Turnstile once (invisible/managed), exchange it for a short-lived signed
+// session from the Worker, then carry that session on every vote. A scripted
+// outsider has no valid session and (once ENFORCE_SESSION is on) can't vote.
+const TURNSTILE_SITEKEY = '0x4AAAAAADz7iDpkaXrOP7NA';
+let _tsWidget = null, _tsResolver = null;
+function _whenTurnstile() {
+  return new Promise((resolve, reject) => {
+    if (window.turnstile) return resolve();
+    let n = 0;
+    const iv = setInterval(() => {
+      if (window.turnstile) { clearInterval(iv); resolve(); }
+      else if (++n > 100) { clearInterval(iv); reject(new Error('turnstile load timeout')); }
+    }, 100);
+  });
+}
+function _tsSettle(token) {
+  const box = document.getElementById('tsBox'); if (box) box.style.display = 'none';
+  const r = _tsResolver; _tsResolver = null; if (r) r(token);
+}
+async function freshTurnstileToken() {
+  await _whenTurnstile();
+  const box = document.getElementById('tsBox'); if (!box) throw new Error('no widget container');
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { _tsResolver = null; box.style.display = 'none'; reject(new Error('turnstile timeout')); }, 25000);
+    _tsResolver = (t) => { clearTimeout(timer); resolve(t); };
+    box.style.display = 'block';
+    try {
+      if (_tsWidget === null) {
+        _tsWidget = window.turnstile.render('#tsBox', {
+          sitekey: TURNSTILE_SITEKEY, callback: _tsSettle,
+          'error-callback': () => {}, 'expired-callback': () => {},
+        });
+      } else {
+        window.turnstile.reset(_tsWidget);
+      }
+    } catch (e) { clearTimeout(timer); reject(e); }
+  });
+}
+let _session = localStorage.getItem('igl_session') || null;
+let _sessionExp = +(localStorage.getItem('igl_session_exp') || 0);
+let _sessionInflight = null;
+async function ensureSession() {
+  if (_session && Date.now() < _sessionExp - 60000) return _session;   // still fresh (>1 min left)
+  if (_sessionInflight) return _sessionInflight;
+  _sessionInflight = (async () => {
+    const token = await freshTurnstileToken();
+    const res = await API.post('/api/session', { token });
+    if (!res || !res.session) throw new Error('session mint failed');
+    _session = res.session; _sessionExp = res.exp * 1000;
+    localStorage.setItem('igl_session', _session);
+    localStorage.setItem('igl_session_exp', String(_sessionExp));
+    return _session;
+  })();
+  try { return await _sessionInflight; } finally { _sessionInflight = null; }
+}
+// Post a vote with a valid session; if the server says the session lapsed, re-verify once.
+async function submitVote(winnerId, loserId) {
+  let s = null;
+  try { s = await ensureSession(); } catch {}
+  let res = await API.post('/api/faceoff', { winnerId, loserId }, s ? { 'x-igl-session': s } : {});
+  if (res && res.needSession) {
+    _session = null; _sessionExp = 0;
+    localStorage.removeItem('igl_session'); localStorage.removeItem('igl_session_exp');
+    try { s = await ensureSession(); } catch { s = null; }
+    if (s) res = await API.post('/api/faceoff', { winnerId, loserId }, { 'x-igl-session': s });
+  }
+  return res;
+}
 
 // deterministic gradient per person for fallback tiles
 function hueOf(id) {

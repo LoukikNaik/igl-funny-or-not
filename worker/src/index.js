@@ -48,13 +48,53 @@ function corsHeaders(origin, env) {
   if (env.ALLOWED_ORIGIN && origin === env.ALLOWED_ORIGIN) {
     h['Access-Control-Allow-Origin'] = origin;
     h['Access-Control-Allow-Credentials'] = 'true';
-    h['Access-Control-Allow-Headers'] = 'Content-Type, x-igl-voter, ngrok-skip-browser-warning';
+    h['Access-Control-Allow-Headers'] = 'Content-Type, x-igl-voter, x-igl-session, ngrok-skip-browser-warning';
     h['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
     h['Vary'] = 'Origin';
   }
   return h;
 }
 const json = (obj, status, headers) => new Response(JSON.stringify(obj), { status, headers });
+
+// ---- Turnstile (proof-of-human) + signed session tokens ----
+// Flow: browser solves Turnstile once -> POST /api/session verifies it and mints a
+// short-lived HMAC session bound to the voter id -> votes carry x-igl-session.
+// The session secret never leaves the Worker, so an outsider can't forge one; a
+// scripted Sybil now has to solve a fresh Turnstile per fake identity.
+async function verifyTurnstile(env, token, ip) {
+  if (!token || !env.TURNSTILE_SECRET) return false;
+  const form = new URLSearchParams();
+  form.append('secret', env.TURNSTILE_SECRET);
+  form.append('response', token);
+  if (ip) form.append('remoteip', ip);
+  try {
+    const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form });
+    const j = await r.json();
+    return !!j.success;
+  } catch { return false; }
+}
+async function hmacHex(secret, msg) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function mintSession(env, vid, ttlSec = 1800) {
+  const exp = Math.floor(Date.now() / 1000) + ttlSec;
+  const payload = `${vid}.${exp}`;
+  return { session: `${payload}.${await hmacHex(env.SESSION_SECRET, payload)}`, exp };
+}
+async function validSession(env, vid, token) {
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const [tvid, exp, sig] = parts;
+  if (tvid !== vid || !/^\d+$/.test(exp) || Number(exp) < Math.floor(Date.now() / 1000)) return false;
+  const expected = await hmacHex(env.SESSION_SECRET, `${tvid}.${exp}`);
+  if (expected.length !== sig.length) return false;
+  let diff = 0;
+  for (let i = 0; i < sig.length; i++) diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
+  return diff === 0;
+}
 
 function personOut(p, ctx) {
   const pl = ctx.players[p.id] || { rating: 1000, wins: 0, losses: 0 };
@@ -138,6 +178,15 @@ export default {
         return json({ voterId: vid, myVotes: n }, 200, cors);
       }
 
+      // Verify a Turnstile token and mint a signed session bound to this voter.
+      if (method === 'POST' && path === '/api/session') {
+        if (ip && await rateLimited(env, ipKey(ip), 40)) return json({ error: 'Whoa, slow down a sec.' }, 429, cors);
+        if (!(await verifyTurnstile(env, body && body.token, ip)))
+          return json({ error: 'verification failed' }, 403, cors);
+        const { session, exp } = await mintSession(env, vid);
+        return json({ ok: true, session, exp }, 200, cors);
+      }
+
       if (method === 'GET' && path === '/api/people') {
         const ctx = await loadContext(env, vid);
         return json({ voterId: vid, people: VISIBLE.map(p => personOut(p, ctx)) }, 200, cors);
@@ -171,6 +220,9 @@ export default {
       if (method === 'POST' && path === '/api/faceoff') {
         // per-IP flood guard (40 votes/min/IP, IPv6 keyed by /64). Reads/matchups are unlimited.
         if (ip && await rateLimited(env, ipKey(ip), 40)) return json({ error: 'Whoa, slow down a sec.' }, 429, cors);
+        // proof-of-human gate (flip on via ENFORCE_SESSION once the frontend is shipping sessions)
+        if (env.ENFORCE_SESSION === 'true' && !(await validSession(env, vid, request.headers.get('x-igl-session'))))
+          return json({ error: 'verification required', needSession: true }, 403, cors);
         const { winnerId, loserId } = body || {};
         if (!BY_ID.has(winnerId) || !BY_ID.has(loserId) || winnerId === loserId)
           return json({ error: 'bad ids' }, 400, cors);

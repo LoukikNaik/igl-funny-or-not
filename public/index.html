@@ -23,6 +23,7 @@
 <meta name="twitter:description" content="Comedy is subjective. We're settling it anyway. Vote on who's funnier across India's Got Latent S1 & S2, then watch the leaderboard argue back.">
 <meta name="twitter:image" content="https://igl.loukik.dev/og.png">
 <link rel="stylesheet" href="app.css">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body>
 <nav>
@@ -52,6 +53,7 @@
     <button class="btn" id="skip">Ugh, too close — skip →</button>
   </div>
   <div class="sessionNote" id="sessionNote"></div>
+  <div class="tsBox" id="tsBox"></div>
 </main>
 
 <script src="config.js"></script>
@@ -107,7 +109,7 @@ async function commitVote(dir) {              // dir: -1 = left wins, +1 = right
   const winner = dir < 0 ? current.a : current.b;
   const loser  = dir < 0 ? current.b : current.a;
 
-  API.post('/api/faceoff', { winnerId: winner.id, loserId: loser.id }).then(res => {
+  submitVote(winner.id, loser.id).then(res => {
     bumpSession();
     if (res && res.myVotes !== undefined) {
       paintLeaderboardLink(res.myVotes);
@@ -116,7 +118,7 @@ async function commitVote(dir) {              // dir: -1 = left wins, +1 = right
         setTimeout(showUnlockModal, 500);   // let the fling settle first
       }
     }
-  });
+  }).catch(() => {});
 
   arena.style.transition = 'transform .34s cubic-bezier(.55,.06,.68,.19), opacity .34s ease-in';
   arena.style.transform = `translateX(${dir * 130}vw) rotate(${dir * 15}deg)`;
@@ -190,6 +192,7 @@ document.addEventListener('keydown', e => {
 
 renderSession();
 loadMatchup();
+ensureSession().catch(() => {});   // pre-warm the proof-of-human session so the first vote is instant
 </script>
 </body>
 </html>

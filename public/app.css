@@ -193,6 +193,9 @@ button.btn:hover { border-color: var(--accent); }
 button.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 button.btn:disabled { opacity: .4; cursor: default; }
 .sessionNote { text-align: center; color: var(--muted); font-size: 13px; margin-top: 14px; }
+/* Turnstile widget: hidden until a proof-of-human check is actually needed */
+.tsBox { display: none; margin: 16px auto 0; text-align: center; }
+.tsBox > * { margin: 0 auto; }
 .eloDelta {
   position: absolute; top: 10px; left: 10px; z-index: 3;
   background: var(--green); color: #08240f; font-weight: 900; font-size: 14px;
