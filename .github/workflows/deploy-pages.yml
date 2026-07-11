@@ -1,6 +1,6 @@
 # Deploys the static frontend (public/) to GitHub Pages on every push to main.
-# The backend (server.js + SQLite) is NOT deployed here — run it locally and expose
-# it via ngrok, then set window.API_BASE in public/config.js to that ngrok URL.
+# The backend is a Cloudflare Worker on D1 (see worker/, DEPLOY.md); this workflow
+# injects its URL into config.js from the API_BASE repo variable at build time.
 #
 # Requires: repo Settings → Pages → Source = "GitHub Actions".
 # Note: publishing Pages from a PRIVATE repo needs a paid GitHub plan (Pro/Team).
@@ -38,6 +38,11 @@ jobs:
         run: |
           printf "// Generated at deploy time from the API_BASE repo variable.\nwindow.API_BASE = '%s';\n" "$API_BASE" > public/config.js
           echo "config.js ->"; cat public/config.js
+      - name: Cache-bust app.css / app.js with the commit SHA
+        run: |
+          V="${GITHUB_SHA::8}"
+          sed -i "s#href=\"app.css\"#href=\"app.css?v=$V\"#g; s#src=\"app.js\"#src=\"app.js?v=$V\"#g" public/*.html
+          echo "asset version -> $V"; grep -o 'app\.\(css\|js\)?v=[a-f0-9]*' public/index.html
       - name: Upload public/ as the Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
